@@ -1056,13 +1056,13 @@ namespace Xpress_backend_V2.Controllers
             }
         }
 
-        // To download the ticket file
+        // Download Tickets
         [HttpGet("{requestId}/downloadticket")]
         [ProducesResponseType(StatusCodes.Status200OK, Type = typeof(FileStreamResult))]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         [ProducesResponseType(StatusCodes.Status500InternalServerError)]
-        public async Task<IActionResult> DownloadTicket(string requestId)
+        public async Task<IActionResult> DownloadTicket(string requestId, [FromQuery] int index)
         {
             if (string.IsNullOrWhiteSpace(requestId))
             {
@@ -1071,32 +1071,53 @@ namespace Xpress_backend_V2.Controllers
 
             try
             {
-                // Find the URL for the ticket document
-                var ticketPath = await _context.TravelRequests
+                var ticketPaths = await _context.TravelRequests
                     .Where(tr => tr.RequestId == requestId)
                     .Select(tr => tr.TicketDocumentPath)
                     .FirstOrDefaultAsync();
 
-                if (string.IsNullOrWhiteSpace(ticketPath))
+                if (ticketPaths == null || !ticketPaths.Any())
                 {
-                    return NotFound("No ticket document is available for this travel request.");
+                    return NotFound("No ticket documents are available for this travel request.");
                 }
 
-                // Create an HttpClient to fetch the file from the URL
+                if (index < 0 || index >= ticketPaths.Count)
+                {
+                    return BadRequest($"Invalid document index. Please provide an index between 0 and {ticketPaths.Count - 1}.");
+                }
+
+                var selectedPath = ticketPaths[index];
+                if (string.IsNullOrWhiteSpace(selectedPath))
+                {
+                    return NotFound($"The document at index {index} has an invalid or empty URL.");
+                }
+
+                //HttpClient to fetch the single file from its URL
                 var httpClient = _httpClientFactory.CreateClient();
-                var response = await httpClient.GetAsync(ticketPath);
+                var response = await httpClient.GetAsync(selectedPath);
 
                 if (!response.IsSuccessStatusCode)
                 {
-                    _logger.LogError("Failed to fetch ticket from URL {Url}. Status: {StatusCode}", ticketPath, response.StatusCode);
+                    _logger.LogError("Failed to fetch ticket from URL {Url}. Status: {StatusCode}", selectedPath, response.StatusCode);
                     return StatusCode((int)response.StatusCode, $"Could not retrieve the file from the source. Status: {response.StatusCode}");
                 }
 
+                // Prepare the file for download
                 var fileStream = await response.Content.ReadAsStreamAsync();
 
-                var downloadFileName = $"Ticket-{requestId}.pdf";
+                var fileExtension = Path.GetExtension(new Uri(selectedPath).AbsolutePath).ToLowerInvariant();
+                var contentType = fileExtension switch
+                {
+                    ".pdf" => "application/pdf",
+                    ".jpg" or ".jpeg" => "image/jpeg",
+                    ".png" => "image/png",
+                    ".webp" => "image/webp",
+                    _ => "application/octet-stream"
+                };
 
-                return File(fileStream, "application/pdf", downloadFileName);
+                var downloadFileName = $"Ticket-{requestId}-{index + 1}{fileExtension}";
+
+                return File(fileStream, contentType, downloadFileName);
             }
             catch (Exception ex)
             {
