@@ -1,4 +1,6 @@
-﻿namespace Xpress_backend_V2.Models
+﻿using System.ComponentModel.DataAnnotations.Schema;
+
+namespace Xpress_backend_V2.Models
 {
     public class TravelRequest
     {
@@ -35,7 +37,15 @@
         public decimal? TravelAgencyExpense { get; set; }
         //public int? AirlineId { get; set; } // FK → Airlines
         public decimal? TotalExpense { get; set; }
-        public string? TicketDocumentPath { get; set; }
+
+        [Column(TypeName = "jsonb")]
+        public List<string>? TicketDocumentPath { get; set; }
+        [Column(TypeName = "jsonb")]
+        public List<string>? AccomodationDocumentPath { get; set; }
+        [Column(TypeName = "jsonb")]
+        public List<string>? InsuranceDocumentPath { get; set; }
+
+        public bool IsBillable { get; set; }
         public string? LDCertificatePath { get; set; }
         public string? TravelFeedback { get; set; }
         public DateTime CreatedAt { get; set; } // Always UTC
