@@ -1,5 +1,6 @@
 ﻿using System.Net;
 using System.Security.Claims;
+using System.Text.Json;
 using AutoMapper;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -1071,14 +1072,22 @@ namespace Xpress_backend_V2.Controllers
 
             try
             {
-                var ticketPaths = await _context.TravelRequests
+                // Get the JSON string from database
+                var jsonString = await _context.TravelRequests
                     .Where(tr => tr.RequestId == requestId)
                     .Select(tr => tr.TicketDocumentPath)
                     .FirstOrDefaultAsync();
 
-                if (ticketPaths == null || !ticketPaths.Any())
+                if (string.IsNullOrWhiteSpace(jsonString))
                 {
                     return NotFound("No ticket documents are available for this travel request.");
+                }
+
+                // Deserialize JSON string back to List<string>
+                var ticketPaths = JsonSerializer.Deserialize<List<string>>(jsonString);
+                if (ticketPaths == null || !ticketPaths.Any())
+                {
+                    return NotFound("No valid ticket documents found.");
                 }
 
                 if (index < 0 || index >= ticketPaths.Count)
@@ -1092,7 +1101,7 @@ namespace Xpress_backend_V2.Controllers
                     return NotFound($"The document at index {index} has an invalid or empty URL.");
                 }
 
-                //HttpClient to fetch the single file from its URL
+                // Rest of your existing download logic...
                 var httpClient = _httpClientFactory.CreateClient();
                 var response = await httpClient.GetAsync(selectedPath);
 
@@ -1102,10 +1111,9 @@ namespace Xpress_backend_V2.Controllers
                     return StatusCode((int)response.StatusCode, $"Could not retrieve the file from the source. Status: {response.StatusCode}");
                 }
 
-                // Prepare the file for download
                 var fileStream = await response.Content.ReadAsStreamAsync();
-
                 var fileExtension = Path.GetExtension(new Uri(selectedPath).AbsolutePath).ToLowerInvariant();
+
                 var contentType = fileExtension switch
                 {
                     ".pdf" => "application/pdf",
