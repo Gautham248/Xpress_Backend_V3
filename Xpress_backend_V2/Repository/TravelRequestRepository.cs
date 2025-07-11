@@ -12,12 +12,15 @@ namespace Xpress_backend_V2.Repository
         private readonly ApiDbContext _context;
         private readonly ILogger<TravelRequestRepository> _logger;
         private readonly IAuditLogServices _auditLogServices;
+        private readonly IConfiguration _configuration;
 
-        public TravelRequestRepository(ApiDbContext context, ILogger<TravelRequestRepository> logger, IAuditLogServices auditLogServices)
+        public TravelRequestRepository(ApiDbContext context, ILogger<TravelRequestRepository> logger, IAuditLogServices auditLogServices, IConfiguration configuration)
         {
             _context = context;
             _logger = logger;
             _auditLogServices = auditLogServices;
+            _configuration = configuration;
+
         }
 
         public async Task<IEnumerable<TravelRequest>> GetAllAsync()

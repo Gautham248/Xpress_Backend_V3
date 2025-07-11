@@ -7,6 +7,7 @@ using Xpress_backend_V2.Models.DTO;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using System.Net.Sockets;
+using Xpress_backend_V2.BackgroundServices;
 
 namespace Xpress_backend_V2.Controllers
 {
@@ -17,6 +18,7 @@ namespace Xpress_backend_V2.Controllers
         private readonly ITicketOptionServices _ticketOptionService;
         private readonly ITravelRequestServices _travelRequestService;
         private readonly IAuditLogServices _auditLogService;
+        private readonly IBackgroundTaskQueue _taskQueue;
         private readonly IAuditLogHandlerService _auditLogHandlerService;
         private readonly IMapper _mapper;
 
@@ -29,11 +31,13 @@ namespace Xpress_backend_V2.Controllers
             ITravelRequestServices travelRequestService,
             IAuditLogServices auditLogService,
             IAuditLogHandlerService auditLogHandler,
+            IBackgroundTaskQueue taskQueue,
             IMapper mapper)
         {
             _ticketOptionService = ticketOptionService;
             _travelRequestService = travelRequestService;
             _auditLogService = auditLogService;
+            _taskQueue = taskQueue;
             _auditLogHandlerService = auditLogHandler;
             _mapper = mapper;
         }
@@ -171,7 +175,7 @@ namespace Xpress_backend_V2.Controllers
                     ChangeDescription = $"Status changed to 'OptionsListed' after first ticket option creation."
                 };
                 await _auditLogService.AddAsync(auditLogStatusChange);
-                await _auditLogHandlerService.ProcessAuditLogEntryAsync(auditLogStatusChange);
+                await _taskQueue.QueueBackgroundWorkItemAsync(auditLogStatusChange.LogId);
             }
 
             var resultDto = _mapper.Map<TicketOptionResponseDTO>(ticketOption);
@@ -309,7 +313,7 @@ namespace Xpress_backend_V2.Controllers
                 Comments = selectionDto.Comments
             };
             await _auditLogService.AddAsync(auditLogStatusChange);
-            await _auditLogHandlerService.ProcessAuditLogEntryAsync(auditLogStatusChange);
+            await _taskQueue.QueueBackgroundWorkItemAsync(auditLogStatusChange.LogId);
 
 
             response.IsSuccess = true;
