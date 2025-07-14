@@ -1057,13 +1057,8 @@ namespace Xpress_backend_V2.Controllers
             }
         }
 
-        // Download Tickets
-        [HttpGet("{requestId}/downloadticket")]
-        [ProducesResponseType(StatusCodes.Status200OK, Type = typeof(FileStreamResult))]
-        [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
-        [ProducesResponseType(StatusCodes.Status500InternalServerError)]
-        public async Task<IActionResult> DownloadTicket(string requestId, [FromQuery] int index)
+        // Download of Tickets, Accommodation and Insurance documents
+        private async Task<IActionResult> DownloadDocumentByTypeAsync(string requestId, string documentType, int index)
         {
             if (string.IsNullOrWhiteSpace(requestId))
             {
@@ -1072,42 +1067,51 @@ namespace Xpress_backend_V2.Controllers
 
             try
             {
-                // Get the JSON string from database
-                var jsonString = await _context.TravelRequests
-                    .Where(tr => tr.RequestId == requestId)
-                    .Select(tr => tr.TicketDocumentPath)
-                    .FirstOrDefaultAsync();
+                var travelRequest = await _context.TravelRequests
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(tr => tr.RequestId == requestId);
+
+                if (travelRequest == null)
+                {
+                    return NotFound("Travel request not found.");
+                }
+
+                string? jsonString = documentType.ToLower() switch
+                {
+                    "ticket" => travelRequest.TicketDocumentPath,
+                    "accommodation" => travelRequest.AccomodationDocumentPath,
+                    "insurance" => travelRequest.InsuranceDocumentPath,
+                    _ => null
+                };
 
                 if (string.IsNullOrWhiteSpace(jsonString))
                 {
-                    return NotFound("No ticket documents are available for this travel request.");
+                    return NotFound($"No {documentType} documents are available for this travel request.");
                 }
 
-                // Deserialize JSON string back to List<string>
-                var ticketPaths = JsonSerializer.Deserialize<List<string>>(jsonString);
-                if (ticketPaths == null || !ticketPaths.Any())
+                var documentPaths = JsonSerializer.Deserialize<List<string>>(jsonString);
+                if (documentPaths == null || !documentPaths.Any())
                 {
-                    return NotFound("No valid ticket documents found.");
+                    return NotFound($"No valid {documentType} documents found after processing.");
                 }
 
-                if (index < 0 || index >= ticketPaths.Count)
+                if (index < 0 || index >= documentPaths.Count)
                 {
-                    return BadRequest($"Invalid document index. Please provide an index between 0 and {ticketPaths.Count - 1}.");
+                    return BadRequest($"Invalid document index. Please provide an index between 0 and {documentPaths.Count - 1}.");
                 }
 
-                var selectedPath = ticketPaths[index];
+                var selectedPath = documentPaths[index];
                 if (string.IsNullOrWhiteSpace(selectedPath))
                 {
                     return NotFound($"The document at index {index} has an invalid or empty URL.");
                 }
 
-                // Rest of your existing download logic...
                 var httpClient = _httpClientFactory.CreateClient();
                 var response = await httpClient.GetAsync(selectedPath);
 
                 if (!response.IsSuccessStatusCode)
                 {
-                    _logger.LogError("Failed to fetch ticket from URL {Url}. Status: {StatusCode}", selectedPath, response.StatusCode);
+                    _logger.LogError("Failed to fetch document from URL {Url}. Status: {StatusCode}", selectedPath, response.StatusCode);
                     return StatusCode((int)response.StatusCode, $"Could not retrieve the file from the source. Status: {response.StatusCode}");
                 }
 
@@ -1119,19 +1123,204 @@ namespace Xpress_backend_V2.Controllers
                     ".pdf" => "application/pdf",
                     ".jpg" or ".jpeg" => "image/jpeg",
                     ".png" => "image/png",
-                    ".webp" => "image/webp",
                     _ => "application/octet-stream"
                 };
 
-                var downloadFileName = $"Ticket-{requestId}-{index + 1}{fileExtension}";
+                var descriptiveName = System.Globalization.CultureInfo.CurrentCulture.TextInfo.ToTitleCase(documentType);
+                var downloadFileName = $"{descriptiveName}-{requestId}-{index + 1}{fileExtension}";
 
                 return File(fileStream, contentType, downloadFileName);
             }
+            catch (JsonException jsonEx)
+            {
+                _logger.LogError(jsonEx, "JSON deserialization error for Request ID {RequestId} and Type {DocType}", requestId, documentType);
+                return StatusCode(StatusCodes.Status500InternalServerError, "Error reading the document storage format.");
+            }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error occurred while processing ticket download for Request ID {RequestId}", requestId);
+                _logger.LogError(ex, "Error during document download for Request ID {RequestId}", requestId);
                 return StatusCode(StatusCodes.Status500InternalServerError, "An internal error occurred while processing your download request.");
             }
+        }
+
+        // Common public endpoint
+        [HttpGet("{requestId}/documents/{documentType}")]
+        [ProducesResponseType(StatusCodes.Status200OK, Type = typeof(FileStreamResult))]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+        public async Task<IActionResult> DownloadDocument(string requestId, string documentType, [FromQuery] int index)
+        {
+            return await DownloadDocumentByTypeAsync(requestId, documentType, index);
+        }
+
+        // Upload of accommodation and insurance documents
+        [HttpPost("{requestId}/documents/{documentType}")]
+        [ProducesResponseType(StatusCodes.Status200OK, Type = typeof(TravelRequest))]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> SaveDocumentUrls(
+        string requestId,
+        string documentType,
+        [FromBody] DocumentUrlPayload payload)
+        {
+            var normalizedDocType = documentType.ToLowerInvariant();
+            if (normalizedDocType != "accommodation" && normalizedDocType != "insurance")
+            {
+                return BadRequest("Invalid document type. Must be 'accommodation' or 'insurance'.");
+            }
+
+            var travelRequest = await _context.TravelRequests.FirstOrDefaultAsync(tr => tr.RequestId == requestId);
+            if (travelRequest == null)
+            {
+                return NotFound($"Travel request with ID '{requestId}' not found.");
+            }
+
+            var userRole = "admin";
+            var allowedStatusIds = new[] { 5, 6, 7, 8 }; // DUApproved -> InTransit
+
+            if (userRole != "admin" || !allowedStatusIds.Contains(travelRequest.CurrentStatusId))
+            {
+                return Forbid("Documents can only be added by an admin when the status is between DU Approved and In Transit.");
+            }
+
+            string? existingJson = normalizedDocType switch
+            {
+                "accommodation" => travelRequest.AccomodationDocumentPath,
+                "insurance" => travelRequest.InsuranceDocumentPath,
+                _ => null
+            };
+
+            // Deserialize the existing JSON string into a list, or create a new list if it's null/empty.
+            List<string> documentList = string.IsNullOrWhiteSpace(existingJson)
+                ? new List<string>()
+                : JsonSerializer.Deserialize<List<string>>(existingJson) ?? new List<string>();
+
+            documentList.AddRange(payload.DocumentUrls);
+
+            string updatedJson = JsonSerializer.Serialize(documentList);
+
+            switch (normalizedDocType)
+            {
+                case "accommodation":
+                    travelRequest.AccomodationDocumentPath = updatedJson;
+                    break;
+                case "insurance":
+                    travelRequest.InsuranceDocumentPath = updatedJson;
+                    break;
+            }
+
+            travelRequest.UpdatedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("{Count} {DocType} document URLs saved for Request ID {RequestId}", payload.DocumentUrls.Count, documentType, requestId);
+
+            return Ok(travelRequest);
+        }
+
+        // Download Tickets
+        [HttpGet("{requestId}/downloadticket")]
+        [ProducesResponseType(StatusCodes.Status200OK, Type = typeof(FileStreamResult))]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+        public async Task<IActionResult> DownloadTicket(string requestId, [FromQuery] int index)
+        {
+            return await DownloadDocumentByTypeAsync(requestId, "ticket", index);
+        }
+
+
+        [HttpDelete("{requestId}/documents/{documentType}")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> DeleteDocument(string requestId, string documentType, [FromQuery] int index)
+        {
+            // --- 1. Find Request and Authorize ---
+            var travelRequest = await _context.TravelRequests.FirstOrDefaultAsync(tr => tr.RequestId == requestId);
+            if (travelRequest == null)
+            {
+                return NotFound($"Travel request with ID '{requestId}' not found.");
+            }
+
+            // Example Authorization (replace with your actual HttpContext.User logic)
+            var userRole = "admin"; // Hardcoded for example
+                                    // Business rule: Deletion is allowed from DUApproved (5) to InTransit (8)
+            var allowedStatusIds = new[] { 5, 6, 7, 8 };
+
+            if (userRole != "admin" || !allowedStatusIds.Contains(travelRequest.CurrentStatusId))
+            {
+                _logger.LogWarning("Forbidden attempt to delete a document for Request {RequestId} with status {StatusId}", requestId, travelRequest.CurrentStatusId);
+                return Forbid("Documents can only be deleted by an admin when the status is between DU Approved and In Transit.");
+            }
+
+            // --- 2. Select the Correct JSON String Field ---
+            var normalizedDocType = documentType.ToLowerInvariant();
+            string? existingJson = normalizedDocType switch
+            {
+                "ticket" => travelRequest.TicketDocumentPath,
+                "accommodation" => travelRequest.AccomodationDocumentPath, // Matching typo in your entity
+                "insurance" => travelRequest.InsuranceDocumentPath,
+                _ => null
+            };
+
+            if (string.IsNullOrWhiteSpace(existingJson))
+            {
+                return NotFound($"No {documentType} documents exist for this travel request.");
+            }
+
+            // --- 3. Deserialize, Modify, and Serialize ---
+            List<string> documentList;
+            try
+            {
+                documentList = JsonSerializer.Deserialize<List<string>>(existingJson) ?? new List<string>();
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogError(ex, "Failed to deserialize {DocType} JSON for request {RequestId}", documentType, requestId);
+                return StatusCode(500, "Error reading the document storage format.");
+            }
+
+            // Check if the index is valid for the list we just created
+            if (index < 0 || index >= documentList.Count)
+            {
+                return BadRequest($"Invalid document index. Please provide an index between 0 and {documentList.Count - 1}.");
+            }
+
+            // Remove the item at the specified index
+            documentList.RemoveAt(index);
+
+            // Serialize the modified list back to a JSON string
+            string updatedJson = JsonSerializer.Serialize(documentList);
+
+            // --- 4. Update Database Entity ---
+            // Assign the new JSON string back to the correct property.
+            switch (normalizedDocType)
+            {
+                case "ticket":
+                    travelRequest.TicketDocumentPath = updatedJson;
+                    break;
+                case "accommodation":
+                    travelRequest.AccomodationDocumentPath = updatedJson;
+                    break;
+                case "insurance":
+                    travelRequest.InsuranceDocumentPath = updatedJson;
+                    break;
+                default:
+                    // This case should be unreachable due to initial validation, but it's good practice.
+                    return BadRequest("Invalid document type specified.");
+            }
+
+            travelRequest.UpdatedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("Document at index {Index} of type {DocType} was deleted for Request ID {RequestId}", index, documentType, requestId);
+
+            // --- 5. Return Success Response ---
+            // HTTP 204 NoContent is the standard and correct response for a successful DELETE operation.
+            return NoContent();
         }
     }
 }
