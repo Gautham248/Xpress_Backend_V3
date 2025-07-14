@@ -177,13 +177,15 @@ namespace Xpress_backend_V2.Controllers
             }
 
             var oldStatusId = travelRequest.CurrentStatusId;
+            travelRequest.IsBillable = approvalDto.IsBillable;
             travelRequest.CurrentStatusId = VERIFIED_STATUS_ID;
             travelRequest.UpdatedAt = DateTime.UtcNow;
 
             try
             {
                 await _travelRequestService.UpdateAsync(travelRequest);
-                _logger.LogInformation("ManagerApprove: TravelRequest {ReqId} status updated to {NewStatusId}", requestId, VERIFIED_STATUS_ID);
+                _logger.LogInformation("ManagerApprove: TR {ReqId} approved. Status -> {NewStatusId}, IsBillable -> {IsBillable}",
+                    requestId, VERIFIED_STATUS_ID, approvalDto.IsBillable);
             }
             catch (Exception ex) // Catching specific DbUpdateConcurrencyException and general Exception
             {

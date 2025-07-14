@@ -34,6 +34,6 @@
         public string TicketDocumentPath { get; set; }
         public string AccomodationDocumentPath { get; set; }
         public string InsuranceDocumentPath { get; set; }
-
+        public bool IsBillable { get; set; }
     }
 }
