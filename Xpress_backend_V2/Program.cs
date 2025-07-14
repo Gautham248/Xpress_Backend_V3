@@ -10,6 +10,7 @@ using Xpress_backend_V2.Models.Configuration;
 using Xpress_backend_V2.Repository;
 using Xpress_backend_V2.Services;
 using Xpress_backend_V2.Services.Interface;
+using Xpress_backend_V2.BackgroundServices;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -49,6 +50,8 @@ builder.Services.AddScoped<IAuditLogHandlerService, AuditLogHandlerService>();
 builder.Services.AddScoped<IDashboardRepository, DashboardRepository>();
 builder.Services.AddScoped<IProcessingTimeRepository, ProcessingTimeRepository>();
 builder.Services.AddScoped<IDocumentStatusRepository, DocumentStatusRepository>();
+builder.Services.AddSingleton<IBackgroundTaskQueue, BackgroundTaskQueue>();
+builder.Services.AddHostedService<QueuedHostedService>();
 builder.Services.AddScoped<ITravelAgencyStatRepository, TravelAgencyStatRepository>();
 builder.Services.AddScoped<ITravelRequestRepo, TravelRequestRepo>();
 
