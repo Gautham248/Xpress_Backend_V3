@@ -21,5 +21,6 @@
         public string TravelerName { get; set; }    // To get initial comments
         public string? InitialComments { get; set; }
         public string? FoodComment { get; set; }
+        public bool IsBillable { get; set; }
     }
 }

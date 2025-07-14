@@ -46,6 +46,7 @@ namespace Xpress_backend_V2.Controllers
         private const int OPTIONS_SELECTED_STATUS_ID = 4; // Note: Your DUHeadApprove uses this
         private const int DU_APPROVED_STATUS_ID = 5;
         private const int REJECTED_STATUS_ID = 12;
+        private const int EMT_DEPARTMENT_ID = 0; // EMT Department ID
 
 
         // Manager Approval
@@ -84,21 +85,73 @@ namespace Xpress_backend_V2.Controllers
             // SECURITY CHECK: Is approvalDto.ApprovingUserId actually the designated manager for travelRequest.ProjectCode?
             // This check is important if you are not using JWT/claims to identify the authenticated manager.
             // For now, assuming ApprovingUserId from DTO is trusted, but this is a security consideration.
-            var projectDetails = await _context.RMTs.FirstOrDefaultAsync(r => r.ProjectCode == travelRequest.ProjectCode);
-            if (projectDetails == null)
-            {
-                _response.IsSuccess = false; _response.StatusCode = HttpStatusCode.InternalServerError;
-                _response.ErrorMessages.Add($"Configuration error: Project details for {travelRequest.ProjectCode} not found.");
-                _logger.LogError("ManagerApprove: RMT not found for ProjectCode {PC}", travelRequest.ProjectCode);
-                return StatusCode((int)HttpStatusCode.InternalServerError, _response);
-            }
-            var managerUser = await _context.Users.FindAsync(approvalDto.ApprovingUserId);
-            if (managerUser == null || !managerUser.IsActive ||
-                projectDetails.ProjectManagerEmail?.Equals(managerUser.EmployeeEmail, StringComparison.OrdinalIgnoreCase) != true)
+            //var projectDetails = await _context.RMTs.FirstOrDefaultAsync(r => r.ProjectCode == travelRequest.ProjectCode);
+            //if (projectDetails == null)
+            //{
+            //    _response.IsSuccess = false; _response.StatusCode = HttpStatusCode.InternalServerError;
+            //    _response.ErrorMessages.Add($"Configuration error: Project details for {travelRequest.ProjectCode} not found.");
+            //    _logger.LogError("ManagerApprove: RMT not found for ProjectCode {PC}", travelRequest.ProjectCode);
+            //    return StatusCode((int)HttpStatusCode.InternalServerError, _response);
+            //}
+            //var managerUser = await _context.Users.FindAsync(approvalDto.ApprovingUserId);
+            //if (managerUser == null || !managerUser.IsActive ||
+            //    projectDetails.ProjectManagerEmail?.Equals(managerUser.EmployeeEmail, StringComparison.OrdinalIgnoreCase) != true)
+            //{
+            //    _response.IsSuccess = false; _response.StatusCode = HttpStatusCode.Forbidden;
+            //    _response.ErrorMessages.Add($"User {approvalDto.ApprovingUserId} is not authorized or not found for this manager approval.");
+            //    _logger.LogWarning("ManagerApprove: Unauthorized user {UserId} or email mismatch for PM {PMEmail} on TR {ReqId}", approvalDto.ApprovingUserId, projectDetails.ProjectManagerEmail, requestId);
+            //    return StatusCode(StatusCodes.Status403Forbidden, _response);
+            //}
+
+            var approverUser = await _context.Users.FindAsync(approvalDto.ApprovingUserId);
+            if (approverUser == null || !approverUser.IsActive)
             {
                 _response.IsSuccess = false; _response.StatusCode = HttpStatusCode.Forbidden;
-                _response.ErrorMessages.Add($"User {approvalDto.ApprovingUserId} is not authorized or not found for this manager approval.");
-                _logger.LogWarning("ManagerApprove: Unauthorized user {UserId} or email mismatch for PM {PMEmail} on TR {ReqId}", approvalDto.ApprovingUserId, projectDetails.ProjectManagerEmail, requestId);
+                _response.ErrorMessages.Add($"Approving user with ID {approvalDto.ApprovingUserId} not found or is inactive.");
+                return StatusCode(StatusCodes.Status403Forbidden, _response);
+            }
+
+            bool isAuthorized = false;
+
+            // --- CONDITION 1: Check if it's an EMT request being approved by an Admin ---
+            if (travelRequest.ProjectCode?.Equals("EMT", StringComparison.OrdinalIgnoreCase) == true)
+            {
+                // For EMT projects, only an Admin can approve through this logic path.
+                // We assume you have a way to check the user's role. A common way is a boolean flag on the User model.
+                // Replace 'approverUser.IsAdmin' with your actual role checking logic (e.g., from claims or a Roles table).
+                if (approverUser.UserRole == "Admin") // Or whatever your role property is called
+                {
+                    isAuthorized = true;
+                    _logger.LogInformation("ManagerApprove: Admin {UserId} is authorized for EMT project {ReqId}", approvalDto.ApprovingUserId, requestId);
+                }
+            }
+
+            // --- CONDITION 2: If not an authorized EMT flow, check the standard Project Manager flow ---
+            if (!isAuthorized)
+            {
+                var projectDetails = await _context.RMTs.FirstOrDefaultAsync(r => r.ProjectCode == travelRequest.ProjectCode);
+                if (projectDetails == null)
+                {
+                    _response.IsSuccess = false; _response.StatusCode = HttpStatusCode.InternalServerError;
+                    _response.ErrorMessages.Add($"Configuration error: Project details for {travelRequest.ProjectCode} not found.");
+                    _logger.LogError("ManagerApprove: RMT not found for ProjectCode {PC}", travelRequest.ProjectCode);
+                    return StatusCode((int)HttpStatusCode.InternalServerError, _response);
+                }
+
+                // Check if the approver's email matches the designated Project Manager's email
+                if (projectDetails.ProjectManagerEmail?.Equals(approverUser.EmployeeEmail, StringComparison.OrdinalIgnoreCase) == true)
+                {
+                    isAuthorized = true;
+                    _logger.LogInformation("ManagerApprove: Project Manager {UserId} is authorized for project {PC} on TR {ReqId}", approvalDto.ApprovingUserId, travelRequest.ProjectCode, requestId);
+                }
+            }
+
+            // --- FINAL CHECK: If neither condition was met, deny access ---
+            if (!isAuthorized)
+            {
+                _response.IsSuccess = false; _response.StatusCode = HttpStatusCode.Forbidden;
+                _response.ErrorMessages.Add($"User {approverUser.EmployeeName} ({approvalDto.ApprovingUserId}) is not authorized for this approval.");
+                _logger.LogWarning("ManagerApprove: Unauthorized user {UserId} for TR {ReqId}", approvalDto.ApprovingUserId, requestId);
                 return StatusCode(StatusCodes.Status403Forbidden, _response);
             }
 
@@ -124,13 +177,15 @@ namespace Xpress_backend_V2.Controllers
             }
 
             var oldStatusId = travelRequest.CurrentStatusId;
+            travelRequest.IsBillable = approvalDto.IsBillable;
             travelRequest.CurrentStatusId = VERIFIED_STATUS_ID;
             travelRequest.UpdatedAt = DateTime.UtcNow;
 
             try
             {
                 await _travelRequestService.UpdateAsync(travelRequest);
-                _logger.LogInformation("ManagerApprove: TravelRequest {ReqId} status updated to {NewStatusId}", requestId, VERIFIED_STATUS_ID);
+                _logger.LogInformation("ManagerApprove: TR {ReqId} approved. Status -> {NewStatusId}, IsBillable -> {IsBillable}",
+                    requestId, VERIFIED_STATUS_ID, approvalDto.IsBillable);
             }
             catch (Exception ex) // Catching specific DbUpdateConcurrencyException and general Exception
             {
@@ -156,7 +211,7 @@ namespace Xpress_backend_V2.Controllers
                 Comments = approvalDto.Comments,
                 ActionDate = DateTime.UtcNow,        // <<< ADDED/CONFIRMED
                 Timestamp = DateTime.UtcNow,         // <<< ADDED/CONFIRMED
-                ChangeDescription = $"Manager ({managerUser.EmployeeName}) approved. Status changed from '{oldStatusName}' to '{newStatusName}'."
+                ChangeDescription = $"Manager ({approverUser.EmployeeName}) approved. Status changed from '{oldStatusName}' to '{newStatusName}'."
             };
 
             try
@@ -290,7 +345,7 @@ namespace Xpress_backend_V2.Controllers
             }
 
             // DU Head approves when status is VERIFIED_STATUS_ID (Manager Approved)
-            if (travelRequest.CurrentStatusId != VERIFIED_STATUS_ID) // <<< CORRECTED STATUS CHECK
+            if (travelRequest.CurrentStatusId != OPTIONS_SELECTED_STATUS_ID) // <<< CORRECTED STATUS CHECK
             {
                 /* Conflict */
                 var currentStatus = await _context.RequestStatuses.FindAsync(travelRequest.CurrentStatusId);
@@ -342,6 +397,86 @@ namespace Xpress_backend_V2.Controllers
                 return StatusCode((int)HttpStatusCode.InternalServerError, _response);
             }
         }
+
+
+        // EMT ticket selection with DU Head approval bypass endpoint
+        [HttpPut("{requestId}/ticketoptions/{optionId}/emt-select-and-approve")]
+        [ProducesResponseType(StatusCodes.Status200OK, Type = typeof(APIResponse))]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<ActionResult<APIResponse>> SelectAndApproveForEmt(
+            string requestId,
+            int optionId,
+            [FromBody] SelectTicketOptionDTO payload)
+        {
+            _response = new APIResponse();
+
+            var travelRequest = await _context.TravelRequests.FirstOrDefaultAsync(tr => tr.RequestId == requestId);
+            var ticketOption = await _context.TicketOptions.FirstOrDefaultAsync(to => to.OptionId == optionId && to.RequestId == requestId);
+            var approverUser = await _context.Users.FindAsync(payload.SelectingUserId);
+
+            if (travelRequest == null || ticketOption == null || approverUser == null)
+            {
+                return NotFound(new APIResponse { IsSuccess = false, ErrorMessages = new List<string> { "Request, option, or user not found." } });
+            }
+
+            // Authorization Check 1: This endpoint is ONLY for EMT projects.
+            if (!"EMT".Equals(travelRequest.ProjectCode, StringComparison.OrdinalIgnoreCase))
+            {
+                _response.IsSuccess = false;
+                _response.StatusCode = HttpStatusCode.Forbidden;
+                _response.ErrorMessages.Add("This combined action is only available for EMT projects.");
+                return Ok(_response);
+            }
+
+            if (approverUser.Department != "EMT")
+            {
+                _response.IsSuccess = false;
+                _response.StatusCode = HttpStatusCode.Forbidden;
+                _response.ErrorMessages.Add("User is not a member of the EMT department and cannot perform this action.");
+                return Ok(_response);
+            }
+
+
+            // Action A: Select the ticket option
+            travelRequest.SelectedTicketOptionId = ticketOption.OptionId;
+            ticketOption.IsSelected = true;
+
+            // Action B: Update the request status directly to DU Approved
+            var oldStatusId = travelRequest.CurrentStatusId;
+            travelRequest.CurrentStatusId = DU_APPROVED_STATUS_ID;
+            travelRequest.UpdatedAt = DateTime.UtcNow;
+
+            var oldStatusName = (await _context.RequestStatuses.FindAsync(oldStatusId))?.StatusName ?? "N/A";
+            var newStatusName = (await _context.RequestStatuses.FindAsync(DU_APPROVED_STATUS_ID))?.StatusName ?? "N/A";
+
+            var auditLogSelect = new AuditLog
+            {
+                RequestId = requestId,
+                UserId = payload.SelectingUserId,
+                ActionType = "OptionSelected",
+                ChangeDescription = $"Ticket option {optionId} was selected by {approverUser.EmployeeName}."
+            };
+            var auditLogApprove = new AuditLog
+            {
+                RequestId = requestId,
+                UserId = payload.SelectingUserId,
+                ActionType = "DuHeadApproved", // Logged as a DU Head approval
+                OldStatusId = oldStatusId,
+                NewStatusId = DU_APPROVED_STATUS_ID,
+                ChangeDescription = $"Request auto-approved for EMT. Status changed from '{oldStatusName}' to '{newStatusName}'."
+            };
+
+            await _context.AuditLogs.AddRangeAsync(auditLogSelect, auditLogApprove);
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("EMT request {ReqId} had option {OptId} selected and was auto-approved by user {UserId}", requestId, optionId, approverUser.UserId);
+
+            _response.IsSuccess = true;
+            _response.Result = _mapper.Map<TravelRequestResponseDTO>(travelRequest);
+            return Ok(_response);
+        }
+
+
 
         // ... (Implement DUHeadReject and ManagerSelectTicket similarly, ensuring the call to _auditLogHandlerService)
 
