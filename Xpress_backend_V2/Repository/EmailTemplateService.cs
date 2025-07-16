@@ -66,8 +66,8 @@ namespace Xpress_backend_V2.Services
 
             var subject = $"ACTION REQUIRED: Approve Travel Request {p.TravelRequest.RequestId} for {p.Requester.EmployeeName}";
             // Links point to the confirmation page path appended to ActionBaseUrl
-            var approveUrl = $"{p.ActionBaseUrl.TrimEnd('/')}/confirm-action.html?action=manager-approve&requestId={p.TravelRequest.RequestId}&intendedActor={Uri.EscapeDataString(p.ActualRecipientEmail)}";
-            var rejectUrl = $"{p.ActionBaseUrl.TrimEnd('/')}/confirm-action.html?action=manager-reject&requestId={p.TravelRequest.RequestId}&intendedActor={Uri.EscapeDataString(p.ActualRecipientEmail)}";
+            var approveUrl = $"{p.ActionBaseUrl.TrimEnd('/')}/confirm-action?action=manager-approve&requestId={p.TravelRequest.RequestId}&intendedActor={Uri.EscapeDataString(p.ActualRecipientEmail)}";
+            var rejectUrl = $"{p.ActionBaseUrl.TrimEnd('/')}/confirm-action?action=manager-reject&requestId={p.TravelRequest.RequestId}&intendedActor={Uri.EscapeDataString(p.ActualRecipientEmail)}";
             var salutationName = GetSalutationDisplayName(p, p.ProjectDetails.ProjectManager ?? "Manager");
 
             var body = $@"
@@ -89,8 +89,8 @@ namespace Xpress_backend_V2.Services
             if (string.IsNullOrWhiteSpace(p.ActionBaseUrl)) { _logger.LogError("GetDuHeadApproval: ActionBaseUrl missing for TR {ReqId}", p.TravelRequest.RequestId); return Task.FromResult(("ERROR", "Internal Error")); }
 
             var subject = $"ACTION REQUIRED: DU Head Approval for TR {p.TravelRequest.RequestId}";
-            var approveUrl = $"{p.ActionBaseUrl.TrimEnd('/')}/confirm-action.html?action=duhead-approve&requestId={p.TravelRequest.RequestId}&intendedActor={Uri.EscapeDataString(p.ActualRecipientEmail)}";
-            var rejectUrl = $"{p.ActionBaseUrl.TrimEnd('/')}/confirm-action.html?action=duhead-reject&requestId={p.TravelRequest.RequestId}&intendedActor={Uri.EscapeDataString(p.ActualRecipientEmail)}";
+            var approveUrl = $"{p.ActionBaseUrl.TrimEnd('/')}/confirm-action?action=duhead-approve&requestId={p.TravelRequest.RequestId}&intendedActor={Uri.EscapeDataString(p.ActualRecipientEmail)}";
+            var rejectUrl = $"{p.ActionBaseUrl.TrimEnd('/')}/confirm-action?action=duhead-reject&requestId={p.TravelRequest.RequestId}&intendedActor={Uri.EscapeDataString(p.ActualRecipientEmail)}";
             var salutationName = GetSalutationDisplayName(p, p.ProjectDetails.DuHeadName ?? "DU Head");
 
             var body = $@"
@@ -113,7 +113,7 @@ namespace Xpress_backend_V2.Services
             var optionsHtml = new StringBuilder();
             foreach (var option in p.TicketOptions)
             {
-                var selectUrl = $"{p.ActionBaseUrl.TrimEnd('/')}/confirm-action.html?action=select-ticket&requestId={p.TravelRequest.RequestId}&intendedActor={Uri.EscapeDataString(p.ActualRecipientEmail)}&optionId={option.OptionId}";
+                var selectUrl = $"{p.ActionBaseUrl.TrimEnd('/')}/confirm-action?action=select-ticket&requestId={p.TravelRequest.RequestId}&intendedActor={Uri.EscapeDataString(p.ActualRecipientEmail)}&optionId={option.OptionId}";
                 optionsHtml.Append($"<li style='margin-bottom: 10px;'>{option.Description} - <a href='{selectUrl}' target='_blank' style='padding:5px 8px; background-color:#007bff; color:white; text-decoration:none; border-radius:3px;'>Review & Select Option</a></li>");
             }
             var salutationName = GetSalutationDisplayName(p, p.ProjectDetails.ProjectManager ?? "Manager");
