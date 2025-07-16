@@ -38,7 +38,7 @@ namespace Xpress_backend_V2.Controllers
             _context = context;
             _mapper = mapper;
             _response = new APIResponse();
-            _logger = logger; // <<< ADDED assign logger
+            _logger = logger;
         }
 
         private const int PENDING_REVIEW_STATUS_ID = 1;
@@ -65,7 +65,6 @@ namespace Xpress_backend_V2.Controllers
 
             if (!ModelState.IsValid)
             {
-                // ... (your existing ModelState error handling) ...
                 _response.IsSuccess = false;
                 _response.StatusCode = HttpStatusCode.BadRequest;
                 _response.ErrorMessages = ModelState.Values.SelectMany(v => v.Errors.Select(e => e.ErrorMessage)).ToList();
@@ -75,7 +74,6 @@ namespace Xpress_backend_V2.Controllers
             var travelRequest = await _travelRequestService.GetByIdAsync(requestId);
             if (travelRequest == null)
             {
-                // ... (your existing NotFound error handling) ...
                 _response.IsSuccess = false;
                 _response.StatusCode = HttpStatusCode.NotFound;
                 _response.ErrorMessages.Add($"Travel request with ID '{requestId}' not found.");
@@ -116,10 +114,7 @@ namespace Xpress_backend_V2.Controllers
             // --- CONDITION 1: Check if it's an EMT request being approved by an Admin ---
             if (travelRequest.ProjectCode?.Equals("EMT", StringComparison.OrdinalIgnoreCase) == true)
             {
-                // For EMT projects, only an Admin can approve through this logic path.
-                // We assume you have a way to check the user's role. A common way is a boolean flag on the User model.
-                // Replace 'approverUser.IsAdmin' with your actual role checking logic (e.g., from claims or a Roles table).
-                if (approverUser.UserRole == "Admin") // Or whatever your role property is called
+                if (approverUser.UserRole == "Admin")
                 {
                     isAuthorized = true;
                     _logger.LogInformation("ManagerApprove: Admin {UserId} is authorized for EMT project {ReqId}", approvalDto.ApprovingUserId, requestId);
@@ -146,7 +141,6 @@ namespace Xpress_backend_V2.Controllers
                 }
             }
 
-            // --- FINAL CHECK: If neither condition was met, deny access ---
             if (!isAuthorized)
             {
                 _response.IsSuccess = false; _response.StatusCode = HttpStatusCode.Forbidden;
@@ -158,7 +152,6 @@ namespace Xpress_backend_V2.Controllers
 
             if (travelRequest.CurrentStatusId != PENDING_REVIEW_STATUS_ID)
             {
-                // ... (your existing Conflict error handling) ...
                 var currentStatus = await _context.RequestStatuses.FindAsync(travelRequest.CurrentStatusId);
                 _response.IsSuccess = false;
                 _response.StatusCode = HttpStatusCode.Conflict;
@@ -169,7 +162,6 @@ namespace Xpress_backend_V2.Controllers
             var managerApprovedStatus = await _context.RequestStatuses.FindAsync(VERIFIED_STATUS_ID);
             if (managerApprovedStatus == null)
             {
-                // ... (your existing InternalServerError handling) ...
                 _response.IsSuccess = false;
                 _response.StatusCode = HttpStatusCode.InternalServerError;
                 _response.ErrorMessages.Add($"Configuration error: 'Manager Approved' status (ID: {VERIFIED_STATUS_ID}) not found.");
@@ -187,9 +179,8 @@ namespace Xpress_backend_V2.Controllers
                 _logger.LogInformation("ManagerApprove: TR {ReqId} approved. Status -> {NewStatusId}, IsBillable -> {IsBillable}",
                     requestId, VERIFIED_STATUS_ID, approvalDto.IsBillable);
             }
-            catch (Exception ex) // Catching specific DbUpdateConcurrencyException and general Exception
+            catch (Exception ex)
             {
-                // ... (your existing exception handling for UpdateAsync) ...
                 _response.IsSuccess = false;
                 _response.StatusCode = HttpStatusCode.InternalServerError;
                 _response.ErrorMessages.Add($"Error approving request: {ex.Message}");
@@ -204,31 +195,27 @@ namespace Xpress_backend_V2.Controllers
             var auditLogEntry = new AuditLog
             {
                 RequestId = travelRequest.RequestId,
-                UserId = approvalDto.ApprovingUserId, // Assuming this DTO field contains the manager's UserId
-                ActionType = "ManagerApproved",      // <<< MODIFIED for clarity
+                UserId = approvalDto.ApprovingUserId,
+                ActionType = "ManagerApproved",
                 OldStatusId = oldStatusId,
                 NewStatusId = VERIFIED_STATUS_ID,
                 Comments = approvalDto.Comments,
-                ActionDate = DateTime.UtcNow,        // <<< ADDED/CONFIRMED
-                Timestamp = DateTime.UtcNow,         // <<< ADDED/CONFIRMED
+                ActionDate = DateTime.UtcNow,
+                Timestamp = DateTime.UtcNow,
                 ChangeDescription = $"Manager ({approverUser.EmployeeName}) approved. Status changed from '{oldStatusName}' to '{newStatusName}'."
             };
 
             try
             {
-                await _auditLogService.AddAsync(auditLogEntry); // This should save the AuditLog
+                await _auditLogService.AddAsync(auditLogEntry);
                 _logger.LogInformation("ManagerApprove: AuditLog {LogId} for TR {ReqId} saved.", auditLogEntry.LogId, requestId);
 
-                // --- CALL AUDIT LOG HANDLER SERVICE TO TRIGGER EMAILS ---
-                await _auditLogHandlerService.ProcessAuditLogEntryAsync(auditLogEntry); // <<< ADDED THIS LINE
+                await _auditLogHandlerService.ProcessAuditLogEntryAsync(auditLogEntry);
                 _logger.LogInformation("ManagerApprove: AuditLogHandlerService processed for AuditLog {LogId}, TR {ReqId}.", auditLogEntry.LogId, requestId);
             }
             catch (Exception ex)
             {
-                // Log error during audit or email processing but the main action (approval) succeeded
                 _logger.LogError(ex, "ManagerApprove: Error during AuditLog saving or Email processing for TR {ReqId} after approval. Approval stands.", requestId);
-                // Depending on requirements, you might still return success or a partial success message.
-                // For now, we'll let the success response below proceed.
             }
 
 
@@ -253,8 +240,6 @@ namespace Xpress_backend_V2.Controllers
             _response = new APIResponse();
             _logger.LogInformation("PUT /manager/reject for TR {ReqId}, RejectingUserId: {UserId}", requestId, rejectionDto.RejectingUserId);
 
-            // ... (similar ModelState, travelRequest fetch, and RMT/User security checks as in ManagerApprove) ...
-            // Ensure rejectionDto.RejectingUserId is validated against RMT.ProjectManagerEmail's User record
             var travelRequest = await _travelRequestService.GetByIdAsync(requestId);
             if (travelRequest == null) { /* NotFound */ return NotFound(/* ... */); }
 
@@ -291,19 +276,18 @@ namespace Xpress_backend_V2.Controllers
                 {
                     RequestId = travelRequest.RequestId,
                     UserId = rejectionDto.RejectingUserId,
-                    ActionType = "ManagerRejected", // <<< MODIFIED for clarity
+                    ActionType = "ManagerRejected",
                     OldStatusId = oldStatusId,
                     NewStatusId = REJECTED_STATUS_ID,
                     Comments = rejectionDto.Comments,
-                    ActionDate = DateTime.UtcNow,    // <<< ADDED/CONFIRMED
-                    Timestamp = DateTime.UtcNow,     // <<< ADDED/CONFIRMED
+                    ActionDate = DateTime.UtcNow,
+                    Timestamp = DateTime.UtcNow,
                     ChangeDescription = $"Manager ({actorUser.EmployeeName}) rejected. Status changed from '{_context.RequestStatuses.Find(oldStatusId)?.StatusName ?? oldStatusId.ToString()}' to '{rejectedStatusEntity.StatusName}'."
                 };
                 await _auditLogService.AddAsync(auditLogEntry);
                 _logger.LogInformation("ManagerReject: AuditLog {LogId} saved for TR {ReqId}", auditLogEntry.LogId, requestId);
 
-                // --- CALL AUDIT LOG HANDLER SERVICE TO TRIGGER EMAILS ---
-                await _auditLogHandlerService.ProcessAuditLogEntryAsync(auditLogEntry); // <<< ADDED THIS LINE
+                await _auditLogHandlerService.ProcessAuditLogEntryAsync(auditLogEntry);
                 _logger.LogInformation("ManagerReject: AuditLogHandlerService processed for AuditLog {LogId}, TR {ReqId}", auditLogEntry.LogId, requestId);
 
                 _response.IsSuccess = true;
@@ -327,9 +311,6 @@ namespace Xpress_backend_V2.Controllers
             _response = new APIResponse();
             _logger.LogInformation("PUT /duhead/approve for TR {ReqId}, ApprovingUserId: {UserId}", requestId, approvalDto.ApprovingUserId);
 
-            // ... (similar ModelState, travelRequest fetch, RMT/User security checks for DU Head) ...
-            // Ensure approvalDto.ApprovingUserId is validated against RMT.DuHeadEmail's User record
-
             var travelRequest = await _travelRequestService.GetByIdAsync(requestId);
             if (travelRequest == null) { /* NotFound */ }
 
@@ -344,8 +325,7 @@ namespace Xpress_backend_V2.Controllers
                 /* Forbidden */
             }
 
-            // DU Head approves when status is VERIFIED_STATUS_ID (Manager Approved)
-            if (travelRequest.CurrentStatusId != OPTIONS_SELECTED_STATUS_ID) // <<< CORRECTED STATUS CHECK
+            if (travelRequest.CurrentStatusId != OPTIONS_SELECTED_STATUS_ID)
             {
                 /* Conflict */
                 var currentStatus = await _context.RequestStatuses.FindAsync(travelRequest.CurrentStatusId);
@@ -356,7 +336,7 @@ namespace Xpress_backend_V2.Controllers
             }
 
             var duApprovedStatusEntity = await _context.RequestStatuses.FindAsync(DU_APPROVED_STATUS_ID);
-            if (duApprovedStatusEntity == null) { /* InternalServerError */ }
+            if (duApprovedStatusEntity == null) { }
 
             var oldStatusId = travelRequest.CurrentStatusId;
             travelRequest.CurrentStatusId = DU_APPROVED_STATUS_ID;
@@ -369,19 +349,18 @@ namespace Xpress_backend_V2.Controllers
                 {
                     RequestId = travelRequest.RequestId,
                     UserId = approvalDto.ApprovingUserId,
-                    ActionType = "DuHeadApproved", // <<< MODIFIED for clarity
+                    ActionType = "DuHeadApproved",
                     OldStatusId = oldStatusId,
                     NewStatusId = DU_APPROVED_STATUS_ID,
                     Comments = approvalDto.Comments,
-                    ActionDate = DateTime.UtcNow,    // <<< ADDED/CONFIRMED
-                    Timestamp = DateTime.UtcNow,     // <<< ADDED/CONFIRMED
+                    ActionDate = DateTime.UtcNow,
+                    Timestamp = DateTime.UtcNow,
                     ChangeDescription = $"DU Head ({actorUser.EmployeeName}) approved. Status changed from '{_context.RequestStatuses.Find(oldStatusId)?.StatusName ?? oldStatusId.ToString()}' to '{duApprovedStatusEntity.StatusName}'."
                 };
                 await _auditLogService.AddAsync(auditLogEntry);
                 _logger.LogInformation("DUHeadApprove: AuditLog {LogId} saved for TR {ReqId}", auditLogEntry.LogId, requestId);
 
-                // --- CALL AUDIT LOG HANDLER SERVICE TO TRIGGER EMAILS ---
-                await _auditLogHandlerService.ProcessAuditLogEntryAsync(auditLogEntry); // <<< ADDED THIS LINE
+                await _auditLogHandlerService.ProcessAuditLogEntryAsync(auditLogEntry);
                 _logger.LogInformation("DUHeadApprove: AuditLogHandlerService processed for AuditLog {LogId}, TR {ReqId}", auditLogEntry.LogId, requestId);
 
                 _response.IsSuccess = true;
@@ -437,11 +416,9 @@ namespace Xpress_backend_V2.Controllers
             }
 
 
-            // Action A: Select the ticket option
             travelRequest.SelectedTicketOptionId = ticketOption.OptionId;
             ticketOption.IsSelected = true;
 
-            // Action B: Update the request status directly to DU Approved
             var oldStatusId = travelRequest.CurrentStatusId;
             travelRequest.CurrentStatusId = DU_APPROVED_STATUS_ID;
             travelRequest.UpdatedAt = DateTime.UtcNow;

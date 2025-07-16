@@ -44,8 +44,6 @@ namespace Xpress_backend_V2.Controllers
 
         private int GetCurrentUserId()
         {
-            // Helper to get the authenticated user's ID
-            // Ensure your authentication setup populates User.Claims correctly
             var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             return int.TryParse(userIdClaim, out var userId) ? userId : 0;
         }
@@ -206,7 +204,7 @@ namespace Xpress_backend_V2.Controllers
             {
                 response.IsSuccess = false;
                 response.StatusCode = HttpStatusCode.NotFound;
-                response.ErrorMessages.Add($"Ticket option with ID {optionId} not found for request '{requestId}'.");
+                response.ErrorMessages.Add($"Ticket option with that ID not found for request '{requestId}'.");
                 return NotFound(response);
             }
 
@@ -221,7 +219,7 @@ namespace Xpress_backend_V2.Controllers
                 //UserId = GetCurrentUserId(),
                 UserId = 2,
                 ActionType = "TICKET_OPTION_EDITED",
-                ChangeDescription = $"Ticket option {optionId} description changed from '{oldDescription}' to '{existingOption.OptionDescription}'.",
+                ChangeDescription = $"Ticket option description changed from '{oldDescription}' to '{existingOption.OptionDescription}'.",
             };
             await _auditLogService.AddAsync(auditLogEntry);
 
@@ -309,7 +307,7 @@ namespace Xpress_backend_V2.Controllers
                 ActionType = "STATUS_UPDATED_OPTION_SELECTED",
                 OldStatusId = oldStatusId,
                 NewStatusId = travelRequest.CurrentStatusId,
-                ChangeDescription = $"Status set to 'OptionSelected' after ticket option {optionToSelect.OptionId} was selected.",
+                ChangeDescription = $"Status set to 'OptionSelected' after ticket option was selected.",
                 Comments = selectionDto.Comments
             };
             await _auditLogService.AddAsync(auditLogStatusChange);
@@ -342,7 +340,7 @@ namespace Xpress_backend_V2.Controllers
             {
                 response.IsSuccess = false;
                 response.StatusCode = HttpStatusCode.NotFound;
-                response.ErrorMessages.Add($"Ticket option with ID {optionId} not found for request '{requestId}'.");
+                response.ErrorMessages.Add($"Ticket option with the respective ID not found for request '{requestId}'.");
                 return NotFound(response);
             }
 
