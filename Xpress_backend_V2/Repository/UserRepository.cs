@@ -83,48 +83,69 @@ namespace Xpress_backend_V2.Repository
             return null;
         }
 
-
         public async Task<User> RegisterUser(UserRegisterDTO user)
         {
             try
             {
-                Console.WriteLine($"User Email: {user.EmployeeEmail}");
+                Console.WriteLine($"Attempting to register user: {user.EmployeeEmail}");
 
-                var userExist = await _context.Users.FirstOrDefaultAsync(u => u.EmployeeEmail == user.EmployeeEmail);
-                if (userExist == null)
-                {
-                    var newUser = new User
-                    {
-                        EmployeeName = user.EmployeeName,
-                        EmployeeEmail = user.EmployeeEmail,
-                        Password = HashPassword(user.Password),
-                        PhoneNumber = user.PhoneNumber ?? "",
-                        UserRole = user.UserRole,
-                        Department = user.Department,
-                        IsActive = true, // Assuming new users are active by default
-                        CreatedAt = DateTime.UtcNow,
-                        UpdatedAt = DateTime.UtcNow
-                    };
+                // Check if user already exists
+                var userExist = await _context.Users
+                    .FirstOrDefaultAsync(u => u.EmployeeEmail == user.EmployeeEmail);
 
-                    await _context.Users.AddAsync(newUser);
-                    await _context.SaveChangesAsync();
-                    return newUser;
-                }
-                else
+                if (userExist != null)
                 {
-                    return null; // Email already exists
+                    Console.WriteLine($"User already exists with email: {user.EmployeeEmail}");
+                    return null;
                 }
+
+                // Create new user WITHOUT setting UserId
+                var newUser = new User
+                {
+                    // DO NOT SET UserId - let it auto-generate
+                    EmployeeName = user.EmployeeName,
+                    EmployeeEmail = user.EmployeeEmail,
+                    Password = HashPassword(user.Password),
+                    PhoneNumber = user.PhoneNumber ?? "",
+                    UserRole = user.UserRole,
+                    Department = user.Department,
+                    IsActive = true,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                };
+
+                Console.WriteLine($"Adding user to context (UserId should be 0): {newUser.UserId}");
+
+                _context.Users.Add(newUser);
+
+                Console.WriteLine("Calling SaveChangesAsync...");
+                await _context.SaveChangesAsync();
+
+                Console.WriteLine($"User saved successfully with UserId: {newUser.UserId}");
+                return newUser;
+            }
+            catch (DbUpdateException ex) when (ex.InnerException is Npgsql.PostgresException pgEx)
+            {
+                Console.WriteLine($"PostgreSQL Error - SqlState: {pgEx.SqlState}, Constraint: {pgEx.ConstraintName}");
+                Console.WriteLine($"Error Message: {pgEx.MessageText}");
+
+                if (pgEx.SqlState == "23505" && pgEx.ConstraintName == "PK_Users")
+                {
+                    Console.WriteLine("Primary key violation detected. This indicates a sequence sync issue.");
+                    // Log current state for debugging
+                    var maxId = await _context.Users.MaxAsync(u => (int?)u.UserId) ?? 0;
+                    Console.WriteLine($"Current max UserId in database: {maxId}");
+                }
+
+                throw; // Re-throw to see the full error
             }
             catch (Exception e)
             {
-                Console.WriteLine($"Error: {e.Message}");
-                return null;
+                Console.WriteLine($"General Error: {e.Message}");
+                Console.WriteLine($"Stack Trace: {e.StackTrace}");
+                throw;
             }
         }
-
-
-
-
         public string HashPassword(string password)
         {
             using (SHA512 sha512 = SHA512.Create())
