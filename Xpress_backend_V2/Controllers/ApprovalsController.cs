@@ -202,7 +202,7 @@ namespace Xpress_backend_V2.Controllers
                 Comments = approvalDto.Comments,
                 ActionDate = DateTime.UtcNow,
                 Timestamp = DateTime.UtcNow,
-                ChangeDescription = $"Manager ({approverUser.EmployeeName}) approved. Status changed from '{oldStatusName}' to '{newStatusName}'."
+                ChangeDescription = $"{approverUser.EmployeeName} approved. Status changed from '{oldStatusName}' to '{newStatusName}'."
             };
 
             try
