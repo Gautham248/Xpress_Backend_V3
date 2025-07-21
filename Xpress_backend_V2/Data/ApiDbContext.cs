@@ -66,6 +66,18 @@ namespace Xpress_backend_V2.Data
             modelBuilder.Entity<AadharDoc>().HasKey(ad => ad.AadharId);
             modelBuilder.Entity<PassportDoc>().HasKey(pd => pd.PassportDocId);
             modelBuilder.Entity<VisaDoc>().HasKey(vd => vd.VisaDocId);
+
+            modelBuilder.Entity<User>(entity =>
+            {
+                entity.HasKey(e => e.UserId);
+                entity.Property(e => e.UserId)
+                      .ValueGeneratedOnAdd()
+                      .UseIdentityColumn(); // For PostgreSQL
+
+                // Make email unique if needed
+                entity.HasIndex(e => e.EmployeeEmail)
+                      .IsUnique();
+            });
             #endregion
 
             // This part remains unchanged
