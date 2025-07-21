@@ -1,7 +1,12 @@
-﻿namespace Xpress_backend_V2.Models
+﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
+
+namespace Xpress_backend_V2.Models
 {
     public class User
     {
+        [Key]
+        [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
         public int UserId { get; set; } // PK
         public string EmployeeName { get; set; }
         public string EmployeeEmail { get; set; }
