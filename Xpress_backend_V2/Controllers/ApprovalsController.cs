@@ -431,6 +431,8 @@ namespace Xpress_backend_V2.Controllers
                 RequestId = requestId,
                 UserId = payload.SelectingUserId,
                 ActionType = "OptionSelected",
+                ActionDate = DateTime.UtcNow,
+                Timestamp = DateTime.UtcNow,
                 ChangeDescription = $"Ticket option {optionId} was selected by {approverUser.EmployeeName}."
             };
             var auditLogApprove = new AuditLog
@@ -440,6 +442,8 @@ namespace Xpress_backend_V2.Controllers
                 ActionType = "DuHeadApproved", // Logged as a DU Head approval
                 OldStatusId = oldStatusId,
                 NewStatusId = DU_APPROVED_STATUS_ID,
+                ActionDate = DateTime.UtcNow,
+                Timestamp = DateTime.UtcNow,
                 ChangeDescription = $"Request auto-approved for EMT. Status changed from '{oldStatusName}' to '{newStatusName}'."
             };
 
