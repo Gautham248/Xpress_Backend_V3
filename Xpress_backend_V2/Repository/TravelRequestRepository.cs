@@ -163,6 +163,7 @@ namespace Xpress_backend_V2.Repository
                             IsVegetarian = tr.IsVegetarian,
                             PickUpLocation = tr.IsPickUpRequired ? tr.PickUpPlace : null,
                             DropOffLocation = tr.IsDropOffRequired ? tr.DropOffPlace : null,
+                            IsBillable = tr.IsBillable,
 
                             TravelerName = traveler.EmployeeName,
                             InitialComments = tr.Comments,
