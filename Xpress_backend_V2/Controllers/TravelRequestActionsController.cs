@@ -5,6 +5,9 @@ using Microsoft.AspNetCore.Mvc;
 using Xpress_backend_V2.Interface;
 using Xpress_backend_V2.Models;
 using Xpress_backend_V2.Models.DTO;
+using System.Collections.Generic;
+using System.Linq;
+using System.Globalization;
 
 namespace Xpress_backend_V2.Controllers
 {
@@ -15,9 +18,43 @@ namespace Xpress_backend_V2.Controllers
         private readonly ITravelRequestRepo _travelRequestRepo;
         protected APIResponse _response;
 
-        // Define status IDs as constants for clarity and maintainability
         private const int PendingReviewStatusId = 1;
         private const int ModifiedStatusId = 13;
+
+        private static readonly Dictionary<string, string> UserFriendlyFieldNames = new Dictionary<string, string>
+        {
+            { "TravelModeId", "Travel Mode" },
+            { "IsInternational", "International Travel" },
+            { "IsRoundTrip", "Round Trip" },
+            { "ProjectCode", "Project" },
+            { "SourcePlace", "Origin City" },
+            { "SourceCountry", "Origin Country" },
+            { "DestinationPlace", "Destination City" },
+            { "DestinationCountry", "Destination Country" },
+            { "OutboundDepartureDate", "Outbound Departure Date" },
+            { "OutboundArrivalDate", "Outbound Arrival Date" },
+            { "ReturnDepartureDate", "Return Departure Date" },
+            { "ReturnArrivalDate", "Return Arrival Date" },
+            { "IsAccommodationRequired", "Accommodation Required" },
+            { "IsDropOffRequired", "Drop-off Required" },
+            { "DropOffPlace", "Drop-off Location" },
+            { "IsPickUpRequired", "Pick-up Required" },
+            { "PickUpPlace", "Pick-up Location" },
+            { "Comments", "General Comments" },
+            { "PurposeOfTravel", "Purpose of Travel" },
+            { "IsVegetarian", "Vegetarian Preference" },
+            { "FoodComment", "Food Preferences" },
+            { "AttendedCCT", "Attended CCT Training" },
+            { "LDCertificatePath", "L&D Certificate" },
+            { "SelectedTicketOptionId", "Selected Ticket Option" },
+            { "TravelAgencyName", "Travel Agency" },
+            { "TravelAgencyExpense", "Travel Agency Quote" },
+            { "TotalExpense", "Total Estimated Expense" },
+            { "TicketDocumentPath", "E-Ticket Document" },
+            { "AccomodationDocumentPath", "Accommodation Document" },
+            { "InsuranceDocumentPath", "Insurance Document" },
+            { "TravelFeedback", "Travel Feedback" }
+        };
 
         public TravelRequestActionsController(ITravelRequestRepo travelRequestRepo)
         {
@@ -30,12 +67,10 @@ namespace Xpress_backend_V2.Controllers
         [ProducesResponseType(typeof(APIResponse), 400)]
         [ProducesResponseType(typeof(APIResponse), 404)]
         [ProducesResponseType(typeof(APIResponse), 500)]
-        public async Task<ActionResult<APIResponse>> EditTravelRequest(string requestId, [FromBody] EditTravelRequestDto editDto)
+        public async Task<ActionResult<APIResponse>> EditTravelRequest(string requestId, [FromBody] EditedTravelRequestDto editDto)
         {
             try
             {
-                // We use GetByIdAsync without includes here initially because we only need the base entity
-                // for comparison and update. This is slightly more efficient.
                 var existingRequest = await _travelRequestRepo.GetByIdAsync(requestId);
 
                 if (existingRequest == null)
@@ -46,41 +81,133 @@ namespace Xpress_backend_V2.Controllers
                     return NotFound(_response);
                 }
 
-                // Build the string of changes
                 var changes = new StringBuilder();
-                CompareAndLog(changes, nameof(existingRequest.TravelModeId), existingRequest.TravelModeId, editDto.TravelModeId);
-                CompareAndLog(changes, nameof(existingRequest.IsInternational), existingRequest.IsInternational, editDto.IsInternational);
-                CompareAndLog(changes, nameof(existingRequest.IsRoundTrip), existingRequest.IsRoundTrip, editDto.IsRoundTrip);
-                CompareAndLog(changes, nameof(existingRequest.ProjectCode), existingRequest.ProjectCode, editDto.ProjectCode);
-                CompareAndLog(changes, nameof(existingRequest.SourcePlace), existingRequest.SourcePlace, editDto.SourcePlace);
-                CompareAndLog(changes, nameof(existingRequest.SourceCountry), existingRequest.SourceCountry, editDto.SourceCountry);
-                CompareAndLog(changes, nameof(existingRequest.DestinationPlace), existingRequest.DestinationPlace, editDto.DestinationPlace);
-                CompareAndLog(changes, nameof(existingRequest.DestinationCountry), existingRequest.DestinationCountry, editDto.DestinationCountry);
-                CompareAndLog(changes, nameof(existingRequest.OutboundDepartureDate), existingRequest.OutboundDepartureDate, editDto.OutboundDepartureDate);
-                CompareAndLog(changes, nameof(existingRequest.OutboundArrivalDate), existingRequest.OutboundArrivalDate, editDto.OutboundArrivalDate);
-                CompareAndLog(changes, nameof(existingRequest.ReturnDepartureDate), existingRequest.ReturnDepartureDate, editDto.ReturnDepartureDate);
-                CompareAndLog(changes, nameof(existingRequest.ReturnArrivalDate), existingRequest.ReturnArrivalDate, editDto.ReturnArrivalDate);
-                CompareAndLog(changes, nameof(existingRequest.IsAccommodationRequired), existingRequest.IsAccommodationRequired, editDto.IsAccommodationRequired);
-                CompareAndLog(changes, nameof(existingRequest.IsDropOffRequired), existingRequest.IsDropOffRequired, editDto.IsDropOffRequired);
-                CompareAndLog(changes, nameof(existingRequest.DropOffPlace), existingRequest.DropOffPlace, editDto.DropOffPlace);
-                CompareAndLog(changes, nameof(existingRequest.IsPickUpRequired), existingRequest.IsPickUpRequired, editDto.IsPickUpRequired);
-                CompareAndLog(changes, nameof(existingRequest.PickUpPlace), existingRequest.PickUpPlace, editDto.PickUpPlace);
-                CompareAndLog(changes, nameof(existingRequest.PurposeOfTravel), existingRequest.PurposeOfTravel, editDto.PurposeOfTravel);
-                CompareAndLog(changes, nameof(existingRequest.IsVegetarian), existingRequest.IsVegetarian, editDto.IsVegetarian);
-                CompareAndLog(changes, nameof(existingRequest.AttendedCCT), existingRequest.AttendedCCT, editDto.AttendedCCT);
-
-                if (changes.Length == 0)
-                {
-                    _response.IsSuccess = false;
-                    _response.StatusCode = HttpStatusCode.BadRequest;
-                    _response.ErrorMessages.Add("No changes were detected in the submitted data.");
-                    return BadRequest(_response);
-                }
-
                 var modificationTime = DateTime.UtcNow;
                 var originalStatusId = existingRequest.CurrentStatusId;
 
-                // Step 1: Create the "Modified" log
+                // --- 1. Update fields based on input DTO (EditedTravelRequestDto) ---
+                CompareAndLog(changes, nameof(existingRequest.TravelModeId), existingRequest.TravelModeId, editDto.TravelModeId);
+                existingRequest.TravelModeId = editDto.TravelModeId;
+
+                CompareAndLog(changes, nameof(existingRequest.IsInternational), existingRequest.IsInternational, editDto.IsInternational);
+                existingRequest.IsInternational = editDto.IsInternational;
+
+                CompareAndLog(changes, nameof(existingRequest.IsRoundTrip), existingRequest.IsRoundTrip, editDto.IsRoundTrip);
+                existingRequest.IsRoundTrip = editDto.IsRoundTrip;
+
+                CompareAndLog(changes, nameof(existingRequest.ProjectCode), existingRequest.ProjectCode, editDto.ProjectCode);
+                existingRequest.ProjectCode = editDto.ProjectCode;
+
+                CompareAndLog(changes, nameof(existingRequest.SourcePlace), existingRequest.SourcePlace, editDto.SourcePlace);
+                existingRequest.SourcePlace = editDto.SourcePlace;
+
+                CompareAndLog(changes, nameof(existingRequest.SourceCountry), existingRequest.SourceCountry, editDto.SourceCountry);
+                existingRequest.SourceCountry = editDto.SourceCountry;
+
+                CompareAndLog(changes, nameof(existingRequest.DestinationPlace), existingRequest.DestinationPlace, editDto.DestinationPlace);
+                existingRequest.DestinationPlace = editDto.DestinationPlace;
+
+                CompareAndLog(changes, nameof(existingRequest.DestinationCountry), existingRequest.DestinationCountry, editDto.DestinationCountry);
+                existingRequest.DestinationCountry = editDto.DestinationCountry;
+
+                CompareAndLog(changes, nameof(existingRequest.OutboundDepartureDate), existingRequest.OutboundDepartureDate, editDto.OutboundDepartureDate);
+                existingRequest.OutboundDepartureDate = editDto.OutboundDepartureDate.ToUniversalTime();
+
+                CompareAndLog(changes, nameof(existingRequest.OutboundArrivalDate), existingRequest.OutboundArrivalDate, editDto.OutboundArrivalDate);
+                existingRequest.OutboundArrivalDate = editDto.OutboundArrivalDate?.ToUniversalTime();
+
+                CompareAndLog(changes, nameof(existingRequest.ReturnDepartureDate), existingRequest.ReturnDepartureDate, editDto.ReturnDepartureDate);
+                existingRequest.ReturnDepartureDate = editDto.ReturnDepartureDate?.ToUniversalTime();
+
+                CompareAndLog(changes, nameof(existingRequest.ReturnArrivalDate), existingRequest.ReturnArrivalDate, editDto.ReturnArrivalDate);
+                existingRequest.ReturnArrivalDate = editDto.ReturnArrivalDate?.ToUniversalTime();
+
+                CompareAndLog(changes, nameof(existingRequest.IsAccommodationRequired), existingRequest.IsAccommodationRequired, editDto.IsAccommodationRequired);
+                existingRequest.IsAccommodationRequired = editDto.IsAccommodationRequired;
+
+                CompareAndLog(changes, nameof(existingRequest.IsDropOffRequired), existingRequest.IsDropOffRequired, editDto.IsDropOffRequired);
+                existingRequest.IsDropOffRequired = editDto.IsDropOffRequired;
+
+                CompareAndLog(changes, nameof(existingRequest.DropOffPlace), existingRequest.DropOffPlace, editDto.DropOffPlace);
+                existingRequest.DropOffPlace = editDto.DropOffPlace;
+
+                CompareAndLog(changes, nameof(existingRequest.IsPickUpRequired), existingRequest.IsPickUpRequired, editDto.IsPickUpRequired);
+                existingRequest.IsPickUpRequired = editDto.IsPickUpRequired;
+
+                CompareAndLog(changes, nameof(existingRequest.PickUpPlace), existingRequest.PickUpPlace, editDto.PickUpPlace);
+                existingRequest.PickUpPlace = editDto.PickUpPlace;
+
+                CompareAndLog(changes, nameof(existingRequest.Comments), existingRequest.Comments, editDto.Comments);
+                existingRequest.Comments = editDto.Comments;
+
+                CompareAndLog(changes, nameof(existingRequest.PurposeOfTravel), existingRequest.PurposeOfTravel, editDto.PurposeOfTravel);
+                existingRequest.PurposeOfTravel = editDto.PurposeOfTravel;
+
+                CompareAndLog(changes, nameof(existingRequest.IsVegetarian), existingRequest.IsVegetarian, editDto.IsVegetarian);
+                existingRequest.IsVegetarian = editDto.IsVegetarian;
+
+                CompareAndLog(changes, nameof(existingRequest.FoodComment), existingRequest.FoodComment, editDto.FoodComment);
+                existingRequest.FoodComment = editDto.FoodComment;
+
+                CompareAndLog(changes, nameof(existingRequest.LDCertificatePath), existingRequest.LDCertificatePath, editDto.LDCertificatePath);
+                existingRequest.LDCertificatePath = editDto.LDCertificatePath;
+
+                CompareAndLog(changes, nameof(existingRequest.AttendedCCT), existingRequest.AttendedCCT, editDto.AttendedCCT);
+                if (editDto.AttendedCCT.HasValue)
+                {
+                    existingRequest.AttendedCCT = editDto.AttendedCCT.Value;
+                }
+                else
+                {
+                    if (existingRequest.AttendedCCT != false)
+                    {
+                        changes.AppendLine($"{GetUserFriendlyFieldName(nameof(existingRequest.AttendedCCT))} was reset to 'No'.");
+                    }
+                    existingRequest.AttendedCCT = false;
+                }
+
+                // --- 2. Explicitly reset fields NOT present in the input DTO ---
+                CompareAndLog(changes, nameof(existingRequest.SelectedTicketOptionId), existingRequest.SelectedTicketOptionId, null);
+                existingRequest.SelectedTicketOptionId = null;
+
+                CompareAndLog(changes, nameof(existingRequest.TravelAgencyName), existingRequest.TravelAgencyName, null);
+                existingRequest.TravelAgencyName = null;
+
+                CompareAndLog(changes, nameof(existingRequest.TravelAgencyExpense), existingRequest.TravelAgencyExpense, null);
+                existingRequest.TravelAgencyExpense = null;
+
+                CompareAndLog(changes, nameof(existingRequest.TotalExpense), existingRequest.TotalExpense, null);
+                existingRequest.TotalExpense = null;
+
+                CompareAndLog(changes, nameof(existingRequest.TicketDocumentPath), existingRequest.TicketDocumentPath, null);
+                existingRequest.TicketDocumentPath = null;
+
+                CompareAndLog(changes, nameof(existingRequest.AccomodationDocumentPath), existingRequest.AccomodationDocumentPath, null);
+                existingRequest.AccomodationDocumentPath = null;
+
+                CompareAndLog(changes, nameof(existingRequest.InsuranceDocumentPath), existingRequest.InsuranceDocumentPath, null);
+                existingRequest.InsuranceDocumentPath = null;
+
+                CompareAndLog(changes, nameof(existingRequest.TravelFeedback), existingRequest.TravelFeedback, null);
+                existingRequest.TravelFeedback = null;
+
+                // --- End of Changes Detection and Application ---
+
+                if (changes.Length == 0 && originalStatusId == PendingReviewStatusId)
+                {
+                    _response.IsSuccess = false;
+                    _response.StatusCode = HttpStatusCode.BadRequest;
+                    _response.ErrorMessages.Add("No changes were detected in the submitted data, and the request is already in Pending Review status. No action taken.");
+                    return BadRequest(_response);
+                }
+                else if (changes.Length == 0)
+                {
+                    _response.IsSuccess = false;
+                    _response.StatusCode = HttpStatusCode.BadRequest;
+                    _response.ErrorMessages.Add("No content changes were detected in the submitted data.");
+                    return BadRequest(_response);
+                }
+
                 var modificationLog = new AuditLog
                 {
                     RequestId = requestId,
@@ -94,38 +221,10 @@ namespace Xpress_backend_V2.Controllers
                 };
                 _travelRequestRepo.AddAuditLog(modificationLog);
 
-                // Step 2: Update the main travel request entity
-                existingRequest.TravelModeId = editDto.TravelModeId;
-                existingRequest.IsInternational = editDto.IsInternational;
-                existingRequest.IsRoundTrip = editDto.IsRoundTrip;
-                existingRequest.ProjectCode = editDto.ProjectCode;
-                existingRequest.SourcePlace = editDto.SourcePlace;
-                existingRequest.SourceCountry = editDto.SourceCountry;
-                existingRequest.DestinationPlace = editDto.DestinationPlace;
-                existingRequest.DestinationCountry = editDto.DestinationCountry;
-                existingRequest.OutboundDepartureDate = editDto.OutboundDepartureDate.ToUniversalTime();
-                existingRequest.OutboundArrivalDate = editDto.OutboundArrivalDate?.ToUniversalTime();
-                existingRequest.ReturnDepartureDate = editDto.ReturnDepartureDate?.ToUniversalTime();
-                existingRequest.ReturnArrivalDate = editDto.ReturnArrivalDate?.ToUniversalTime();
-                existingRequest.IsAccommodationRequired = editDto.IsAccommodationRequired;
-                existingRequest.IsDropOffRequired = editDto.IsDropOffRequired;
-                existingRequest.DropOffPlace = editDto.DropOffPlace;
-                existingRequest.IsPickUpRequired = editDto.IsPickUpRequired;
-                existingRequest.PickUpPlace = editDto.PickUpPlace;
-                existingRequest.Comments = editDto.Comments;
-                existingRequest.PurposeOfTravel = editDto.PurposeOfTravel;
-                existingRequest.IsVegetarian = editDto.IsVegetarian;
-                existingRequest.FoodComment = editDto.FoodComment;
-                existingRequest.LDCertificatePath = editDto.LDCertificatePath;
-                if (editDto.AttendedCCT.HasValue)
-                {
-                    existingRequest.AttendedCCT = editDto.AttendedCCT.Value;
-                }
                 existingRequest.CurrentStatusId = PendingReviewStatusId;
                 existingRequest.UpdatedAt = modificationTime;
                 _travelRequestRepo.Update(existingRequest);
 
-                // Step 3: Create the "Status Change" log
                 var statusChangeLog = new AuditLog
                 {
                     RequestId = requestId,
@@ -139,11 +238,8 @@ namespace Xpress_backend_V2.Controllers
                 };
                 _travelRequestRepo.AddAuditLog(statusChangeLog);
 
-                // Step 4: Save all changes in a single database transaction.
                 await _travelRequestRepo.SaveChangesAsync();
 
-                // Step 5: Get the final state FROM THE DATABASE for the response.
-                // Your repo's GetByIdAsync now uses .Include() to load AuditLogs, resolving the error.
                 var updatedRequestWithLogs = await _travelRequestRepo.GetByIdAsync(requestId);
 
                 if (updatedRequestWithLogs == null)
@@ -154,13 +250,13 @@ namespace Xpress_backend_V2.Controllers
                     return StatusCode(StatusCodes.Status500InternalServerError, _response);
                 }
 
-                // Step 6: Map the entity to the "EditedTravelRequestDto" to create a safe response object.
                 var responseDto = new EditedTravelRequestDto
                 {
                     RequestId = updatedRequestWithLogs.RequestId,
                     UserId = updatedRequestWithLogs.UserId.ToString(),
                     CurrentStatusId = updatedRequestWithLogs.CurrentStatusId,
                     UpdatedAt = updatedRequestWithLogs.UpdatedAt,
+
                     TravelModeId = updatedRequestWithLogs.TravelModeId,
                     IsInternational = updatedRequestWithLogs.IsInternational,
                     IsRoundTrip = updatedRequestWithLogs.IsRoundTrip,
@@ -185,19 +281,18 @@ namespace Xpress_backend_V2.Controllers
                     AttendedCCT = updatedRequestWithLogs.AttendedCCT,
                     LDCertificatePath = updatedRequestWithLogs.LDCertificatePath,
 
-                    // Map the collection of audit logs to their DTO counterparts
-                    AuditLogs = updatedRequestWithLogs.AuditLogs.Select(log => new EditedRequestAuditLogDto
-                    {
-                        Id = log.LogId,
-                        ActionType = log.ActionType,
-                        ActionDate = log.ActionDate,
-                        OldStatusId = log.OldStatusId,
-                        NewStatusId = log.NewStatusId,
-                        ChangeDescription = log.ChangeDescription
-                    }).ToList()
+                    AuditLogs = updatedRequestWithLogs.AuditLogs?
+                                    .Select(log => new EditedRequestAuditLogDto
+                                    {
+                                        Id = log.LogId,
+                                        ActionType = log.ActionType,
+                                        ActionDate = log.ActionDate,
+                                        OldStatusId = log.OldStatusId,
+                                        NewStatusId = log.NewStatusId,
+                                        ChangeDescription = log.ChangeDescription
+                                    }).ToList() ?? new List<EditedRequestAuditLogDto>()
                 };
 
-                // Populate the success response WITH THE DTO, NOT THE ENTITY
                 _response.IsSuccess = true;
                 _response.StatusCode = HttpStatusCode.OK;
                 _response.Result = responseDto;
@@ -207,19 +302,96 @@ namespace Xpress_backend_V2.Controllers
             {
                 _response.IsSuccess = false;
                 _response.StatusCode = HttpStatusCode.InternalServerError;
-                _response.ErrorMessages.Add(ex.ToString()); // Use ex.ToString() in development for the full stack trace
+                _response.ErrorMessages.Add(ex.ToString());
                 return StatusCode(StatusCodes.Status500InternalServerError, _response);
             }
         }
 
         private void CompareAndLog<T>(StringBuilder sb, string fieldName, T oldValue, T newValue)
         {
+            // Normalize empty strings to null for consistent display of "Not specified"
+            if (oldValue is string oldStr && string.IsNullOrEmpty(oldStr)) oldValue = default(T);
+            if (newValue is string newStr && string.IsNullOrEmpty(newStr)) newValue = default(T);
+
             if (!object.Equals(oldValue, newValue))
             {
-                string oldValStr = (oldValue is DateTime val) ? val.ToString("o") : (oldValue?.ToString() ?? "null");
-                string newValStr = (newValue is DateTime newVal) ? newVal.ToString("o") : (newValue?.ToString() ?? "null");
-                sb.AppendLine($"{fieldName} changed from '{oldValStr}' to '{newValStr}'.");
+                string displayFieldName = GetUserFriendlyFieldName(fieldName);
+                string oldValFormatted = FormatValueForDisplay(fieldName, oldValue);
+                string newValFormatted = FormatValueForDisplay(fieldName, newValue);
+
+                // Determine the most appropriate message for the change
+                if (newValue == null) // This covers all "reset" scenarios (e.g., to null)
+                {
+                    // Removed " (previously: {oldValFormatted})" part
+                    sb.AppendLine($"{displayFieldName} was cleared.");
+                }
+                else if (oldValue == null) // Value was set for the first time or from being cleared
+                {
+                    sb.AppendLine($"{displayFieldName} was set to '{newValFormatted}'.");
+                }
+                else // Value changed from one non-null/non-empty to another
+                {
+                    sb.AppendLine($"{displayFieldName} changed from '{oldValFormatted}' to '{newValFormatted}'.");
+                }
             }
+        }
+
+        private string GetUserFriendlyFieldName(string internalName)
+        {
+            return UserFriendlyFieldNames.GetValueOrDefault(internalName, internalName);
+        }
+
+        private string FormatValueForDisplay<T>(string fieldName, T value)
+        {
+            // Normalize empty strings to null for consistent display of "Not specified"
+            if (value is string strVal && string.IsNullOrEmpty(strVal))
+            {
+                value = default(T); // Set to default to trigger the null check below
+            }
+
+            if (value == null)
+            {
+                return "Not specified";
+            }
+
+            // Specific handling for boolean values
+            if (value is bool boolVal)
+            {
+                return boolVal ? "Yes" : "No";
+            }
+
+            // Specific handling for DateTime values (both nullable and non-nullable)
+            if (value is DateTime exactDateTime) // Handles non-nullable DateTime
+            {
+                return exactDateTime.ToLocalTime().ToString("MMM dd, yyyy h:mm tt");
+            }
+           
+
+            // Specific handling for document paths (jsonb string arrays)
+            if (fieldName.EndsWith("DocumentPath") || fieldName == "LDCertificatePath")
+            {
+                if (value is string pathString && !string.IsNullOrEmpty(pathString))
+                {
+                    // If the path contains 'http', it's likely a Cloudinary/URL path indicating an upload
+                    if (pathString.Contains("http://") || pathString.Contains("https://"))
+                        return "Uploaded";
+                    else if (pathString.Length > 0)
+                        return "Provided";
+                }
+                return "No file";
+            }
+
+            // Specific handling for expense values (assuming currency)
+            if (fieldName == "TravelAgencyExpense" || fieldName == "TotalExpense")
+            {
+                if (value is decimal decVal)
+                {
+                    return decVal.ToString("C", CultureInfo.CurrentCulture);
+                }
+            }
+
+            // Default handling for other types
+            return value.ToString();
         }
     }
 }
