@@ -3,6 +3,7 @@
     public class TravelInfoDTO
     {
         public string RequestId { get; set; }
+        public int CurrentStatusId { get; set; }
         public DateTime OutboundDepartureDate { get; set; }
         public DateTime? OutboundArrivalDate { get; set; }
         public DateTime? ReturnDepartureDate { get; set; }

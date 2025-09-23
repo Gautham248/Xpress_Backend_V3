@@ -151,6 +151,7 @@ namespace Xpress_backend_V2.Repository
                         select new TravelInfoDTO
                         {
                             RequestId = tr.RequestId,
+                            CurrentStatusId = tr.CurrentStatusId,
                             OutboundDepartureDate = tr.OutboundDepartureDate,
                             OutboundArrivalDate = tr.OutboundArrivalDate,
                             ReturnDepartureDate = tr.ReturnDepartureDate,
