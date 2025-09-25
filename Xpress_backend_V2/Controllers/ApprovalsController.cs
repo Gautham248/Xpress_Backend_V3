@@ -210,7 +210,8 @@ namespace Xpress_backend_V2.Controllers
                 await _auditLogService.AddAsync(auditLogEntry);
                 _logger.LogInformation("ManagerApprove: AuditLog {LogId} for TR {ReqId} saved.", auditLogEntry.LogId, requestId);
 
-                await _auditLogHandlerService.ProcessAuditLogEntryAsync(auditLogEntry);
+                //await _auditLogHandlerService.ProcessAuditLogEntryAsync(auditLogEntry);
+                _ = _auditLogHandlerService.ProcessAuditLogEntryAsync(auditLogEntry);
                 _logger.LogInformation("ManagerApprove: AuditLogHandlerService processed for AuditLog {LogId}, TR {ReqId}.", auditLogEntry.LogId, requestId);
             }
             catch (Exception ex)
@@ -287,7 +288,8 @@ namespace Xpress_backend_V2.Controllers
                 await _auditLogService.AddAsync(auditLogEntry);
                 _logger.LogInformation("ManagerReject: AuditLog {LogId} saved for TR {ReqId}", auditLogEntry.LogId, requestId);
 
-                await _auditLogHandlerService.ProcessAuditLogEntryAsync(auditLogEntry);
+                //await _auditLogHandlerService.ProcessAuditLogEntryAsync(auditLogEntry);
+                _ = _auditLogHandlerService.ProcessAuditLogEntryAsync(auditLogEntry);
                 _logger.LogInformation("ManagerReject: AuditLogHandlerService processed for AuditLog {LogId}, TR {ReqId}", auditLogEntry.LogId, requestId);
 
                 _response.IsSuccess = true;
@@ -360,7 +362,8 @@ namespace Xpress_backend_V2.Controllers
                 await _auditLogService.AddAsync(auditLogEntry);
                 _logger.LogInformation("DUHeadApprove: AuditLog {LogId} saved for TR {ReqId}", auditLogEntry.LogId, requestId);
 
-                await _auditLogHandlerService.ProcessAuditLogEntryAsync(auditLogEntry);
+                //await _auditLogHandlerService.ProcessAuditLogEntryAsync(auditLogEntry);
+                _ = _auditLogHandlerService.ProcessAuditLogEntryAsync(auditLogEntry);
                 _logger.LogInformation("DUHeadApprove: AuditLogHandlerService processed for AuditLog {LogId}, TR {ReqId}", auditLogEntry.LogId, requestId);
 
                 _response.IsSuccess = true;
